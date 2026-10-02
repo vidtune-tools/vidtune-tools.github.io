@@ -28,7 +28,7 @@ const throwIfAborted = s => { if (s && s.aborted) throw abortErr(); };
 const safeName = n => (baseName(n).replace(/[\\/:*?"<>|]+/g, '-').trim().slice(0, 100)) || 'converted';
 const live = $('#live');
 function announce(msg) { live.textContent = ''; setTimeout(() => { live.textContent = msg; }, 30); }
-class ServiceError extends Error { constructor(code) { super(code); this.code = code; } }
+class ServiceError extends Error { constructor(code, detail) { super(code); this.code = code; this.detail = detail || ''; } }
 
 /* ==========================================================================
    3. CONVERSION ENGINES
@@ -100,7 +100,7 @@ async function audioConvert(file, format, quality, { signal, report, stages }) {
   report(0, 0);
   const ab = await file.arrayBuffer(); throwIfAborted(signal);
   report(8, 1);
-  let buf; try { buf = await decodeAudio(ab); } catch (e) { if (e instanceof ServiceError) throw e; throw new ServiceError('unsupported_input'); }
+  let buf; try { buf = await decodeAudio(ab); } catch (e) { if (e instanceof ServiceError) throw e; throw new ServiceError('unsupported_input', 'browser decode failed: ' + ((e && (e.name || e.message)) || 'unknown')); }
   throwIfAborted(signal); report(30, 2);
   buf = await normalize(buf, format === 'mp3'); throwIfAborted(signal);
   let blob;
@@ -113,8 +113,8 @@ async function audioConvert(file, format, quality, { signal, report, stages }) {
 /* ---- ffmpeg engine ---- */
 const FF = { ff: null, loading: null, onPct: () => {} };
 async function prefetch(url, onPct) {
-  let res; try { res = await fetch(url); } catch { throw new ServiceError('engine_load'); }
-  if (!res.ok) throw new ServiceError('engine_load');
+  let res; try { res = await fetch(url); } catch (e) { throw new ServiceError('engine_load', 'fetch failed: ' + url); }
+  if (!res.ok) throw new ServiceError('engine_load', 'HTTP ' + res.status + ' for ' + url);
   const total = +res.headers.get('content-length') || 0;
   if (!res.body || !total) { await res.arrayBuffer(); onPct(100); return; }
   const reader = res.body.getReader(); let got = 0;
@@ -130,7 +130,7 @@ function getFFmpeg() {
         const ff = new mod.FFmpeg();
         await ff.load({ coreURL: CONFIG.FFMPEG.core, wasmURL: CONFIG.FFMPEG.wasm });
         FF.ff = ff; return ff;
-      } catch (e) { throw e instanceof ServiceError ? e : new ServiceError('engine_load'); }
+      } catch (e) { throw e instanceof ServiceError ? e : new ServiceError('engine_load', 'engine start failed: ' + String((e && e.message) || e).slice(0, 120)); }
       finally { FF.loading = null; }
     })();
   }
@@ -159,8 +159,8 @@ async function ffmpegConvert(file, format, quality, inputKind, { signal, report,
     if (code !== 0) {
       const text = logs.join('\n');
       if (/does not contain any stream|matches no streams|specified through -vf|Stream specifier|no video/i.test(text)) throw new ServiceError(f.kind === 'video' ? 'no_video' : 'unsupported_input');
-      if (/Invalid data found|could not find codec|Unsupported|Unknown decoder/i.test(text)) throw new ServiceError('unsupported_input');
-      throw new ServiceError('failed');
+      if (/Invalid data found|could not find codec|Unsupported|Unknown decoder/i.test(text)) throw new ServiceError('unsupported_input', 'ffmpeg: ' + logs.slice(-2).join(' / ').slice(0, 160));
+      throw new ServiceError('failed', 'ffmpeg exit ' + code + ': ' + logs.slice(-2).join(' / ').slice(0, 160));
     }
     const data = await ff.readFile(outName);
     report(100, 3);
@@ -185,7 +185,7 @@ async function convertFile(file, opts, hooks) {
       if (!(first instanceof ServiceError) || !['unsupported_input', 'encoder_load'].includes(first.code)) throw first;
       /* the browser couldn't decode it, or the MP3 encoder didn't load: try ffmpeg. If that fails too, report the original problem. */
       try { return await ffmpegConvert(file, format, quality, opts.kind, hooks); }
-      catch (second) { if (second instanceof ServiceError && second.code === 'engine_load') throw first; throw second; }
+      catch (second) { if (second instanceof ServiceError && second.code === 'engine_load') { first.detail = [first.detail, 'backup engine: ' + second.detail].filter(Boolean).join(' | '); throw first; } throw second; }
     }
   }
   return ffmpegConvert(file, format, quality, opts.kind, hooks);
@@ -246,7 +246,7 @@ const svg = (p, s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" 
 
 function mountConverter(root, { formats, defaultFormat }) {
   const S = { phase: 'idle', file: null, meta: { kind: 'unknown' }, format: defaultFormat, quality: defaultQuality(defaultFormat),
-              progress: 0, stageIdx: 0, stages: [], result: null, error: null };
+              progress: 0, stageIdx: 0, stages: [], result: null, error: null, errorDetail: '' };
   let ctl = null, seq = 0;
 
   root.innerHTML = `
@@ -359,7 +359,7 @@ function mountConverter(root, { formats, defaultFormat }) {
     if (S.phase === 'error') {
       const e = ERRORS[S.error] || ERRORS.failed;
       const btns = e.actions.filter(([a]) => !(a === 'retry' && !S.file)).map(([a, label], i) => `<button class="btn ${i === 0 ? 'btn--primary' : 'btn--ghost'}" data-act="${a}" type="button">${label}</button>`).join('');
-      return `<p class="mono err-ref">Ref: ${esc(S.error)}</p><h3 class="stage-h" id="stageH" tabindex="-1">${esc(e.title)}</h3><p class="err-body">${esc(e.body)}</p><div class="actions">${btns}</div>`;
+      return `<p class="mono err-ref">Ref: ${esc(S.error)}${S.errorDetail ? `<br>${esc(S.errorDetail)}` : ''}</p><h3 class="stage-h" id="stageH" tabindex="-1">${esc(e.title)}</h3><p class="err-body">${esc(e.body)}</p><div class="actions">${btns}</div>`;
     }
     return '';
   }
@@ -374,6 +374,7 @@ function mountConverter(root, { formats, defaultFormat }) {
   /* ---- flows ---- */
   function fail(e) {
     S.error = e instanceof ServiceError && ERRORS[e.code] ? e.code : 'failed';
+    S.errorDetail = (e && e.detail) || (e && e.code ? '' : String((e && e.message) || e).slice(0, 120));
     setPhase('error');
   }
   async function setFile(file) {
