@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>VidTune check</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;margin:0;padding:20px;max-width:720px;margin:auto}pre{white-space:pre-wrap;background:#f2f2ee;padding:14px;border-radius:8px;font-size:13px}button{font:inherit;padding:12px 18px;border-radius:8px;border:0;background:#FFB000;font-weight:600}</style></head>
+<body><h1>VidTune engine check</h1><p>Tap Run, wait up to a minute, then send a screenshot or the text.</p><button id="run">Run check</button> <button id="copy" hidden>Copy results</button><pre id="out">Not run yet.</pre>
+<script>
+const out=document.getElementById('out');let lines=[];const log=t=>{lines.push(t);out.textContent=lines.join('\n')};
+async function head(u){try{const r=await fetch(u,{cache:'no-store'});const b=await r.blob();return `${r.status} ${r.headers.get('content-type')||''} ${(b.size/1048576).toFixed(2)} MB`}catch(e){return 'FAILED '+e.message}}
+document.getElementById('run').onclick=async()=>{lines=[];log('Browser: '+navigator.userAgent);
+log('AudioContext: '+(!!(window.AudioContext||window.webkitAudioContext)));log('OfflineAudioContext: '+(!!(window.OfflineAudioContext||window.webkitOfflineAudioContext)));log('Memory hint (GB): '+(navigator.deviceMemory||'n/a'));
+for(const u of ['/assets/vendor/lame.min.js','/assets/ffmpeg/lib/index.js','/assets/ffmpeg/lib/worker.js','/assets/ffmpeg/core/ffmpeg-core.js','/assets/ffmpeg/core/ffmpeg-core.wasm','/core.js','/app.js'])log(u+' -> '+await head(u));
+try{await new Promise((res,rej)=>{const s=document.createElement('script');s.src='/assets/vendor/lame.min.js';s.onload=res;s.onerror=()=>rej(new Error('script error'));document.head.appendChild(s)});log('MP3 encoder object: '+(window.lamejs&&window.lamejs.Mp3Encoder?'OK':'MISSING (file loaded but is not the encoder)'))}catch(e){log('MP3 encoder: '+e.message)}
+try{log('Loading ffmpeg (this downloads ~30 MB)...');const m=await import('/assets/ffmpeg/lib/index.js');const ff=new m.FFmpeg();const msgs=[];ff.on('log',e=>msgs.push(e.message));await ff.load({coreURL:'/assets/ffmpeg/core/ffmpeg-core.js',wasmURL:'/assets/ffmpeg/core/ffmpeg-core.wasm'});const code=await ff.exec(['-version']);log('ffmpeg engine: OK (exit '+code+') '+(msgs[0]||''))}catch(e){log('ffmpeg engine: FAILED '+(e&&e.message||e))}
+log('Done.');document.getElementById('copy').hidden=false};
+document.getElementById('copy').onclick=()=>navigator.clipboard&&navigator.clipboard.writeText(out.textContent);
+</script></body></html>
