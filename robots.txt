@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://jennie-max15.github.io/sitemap.xml
+Sitemap: https://vidtune-tools.github.io/sitemap.xml
