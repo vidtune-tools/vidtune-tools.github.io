@@ -281,3 +281,10 @@ details.faq .a{padding:0 0 18px;color:var(--ink-2);max-width:38em}
 .player{display:block;width:100%;margin-top:16px;border-radius:8px;max-height:280px;background:var(--sunk)}
 .btn--ghost.btn--dl{min-height:54px}
 .done-actions .btn--ghost{width:100%}
+
+/* live AdSense units (reserved space, labelled) */
+.ad-live{width:100%;display:flex;flex-direction:column;align-items:center;gap:4px}
+.ad-live ins{width:100%;min-height:50px}
+.ad-live--leader{max-width:728px}.ad-live--leader ins{min-height:50px}
+.ad-live--rect{max-width:336px}.ad-live--rect ins{min-height:250px}
+.ad-cap{font:400 11px var(--mono);letter-spacing:.06em;color:var(--ink-3);text-transform:uppercase}

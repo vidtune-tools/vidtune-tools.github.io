@@ -12,9 +12,9 @@ const CONFIG = {
   LAME_URLS: ['/assets/vendor/lame.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js', 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js', 'https://unpkg.com/lamejs@1.2.1/lame.min.js'],
   /* ffmpeg.wasm, self-hosted on your own origin (run setup-ffmpeg.sh once). Needed for M4A, MP4, WebM. */
   FFMPEG: { lib: '/assets/ffmpeg/lib/index.js', core: '/assets/ffmpeg/core/ffmpeg-core.js', wasm: '/assets/ffmpeg/core/ffmpeg-core.wasm' },
-  ADS: { enabled: true, slots: {
-    convert: { id: 'CONVERSION_RECT', dims: '300×250' },
-    post:    { id: 'POST_RESULT_RECT', dims: '300×250' } } }
+  ADS: { enabled: true, client: 'ca-pub-5994784172421845', slots: {
+    convert: { id: 'CONVERSION_RECT', dims: '300×250', slot: '' },   // put your AdSense ad unit ID in slot
+    post:    { id: 'POST_RESULT_RECT', dims: '300×250', slot: '' } } }
 };
 
 /* ==========================================================================
@@ -234,6 +234,7 @@ const ERRORS = {
 function ad(kind) {
   if (!CONFIG.ADS.enabled) return '';
   const s = CONFIG.ADS.slots[kind];
+  if (s.slot) return `<aside class="ad-wrap ad-wrap--${kind}" aria-label="Advertisement"><div class="ad-live ad-live--rect"><span class="ad-cap">Advertisement</span><ins class="adsbygoogle" style="display:block" data-ad-client="${CONFIG.ADS.client}" data-ad-slot="${s.slot}" data-ad-format="auto" data-full-width-responsive="true"></ins></div></aside>`;
   return `<aside class="ad-wrap ad-wrap--${kind}" aria-label="Advertisement"><div class="ad ad--rect" data-slot="${s.id}"><span class="ad-tag">ADVERTISEMENT</span><span>${s.dims}</span></div></aside>`;
 }
 
@@ -323,7 +324,8 @@ function mountConverter(root, { formats, defaultFormat }) {
     S.phase = p;
     const idle = p === 'idle';
     src.hidden = !idle; stage.hidden = idle;
-    if (!idle) { stage.innerHTML = renderStage(); const h = $('#stageH', stage); if (h) h.focus(); }
+    if (!idle) { stage.innerHTML = renderStage(); const h = $('#stageH', stage); if (h) h.focus();
+      stage.querySelectorAll('ins.adsbygoogle').forEach(() => { try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) {} }); }
     setStep(); renderStatus();
     const say = { processing: 'Conversion started.', done: 'Conversion complete. Your file is ready to download.', error: S.error ? ERRORS[S.error].title : '' }[p];
     if (say) announce(say);
